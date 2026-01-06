@@ -29,23 +29,38 @@ app.post('/callback', line.middleware(config), (req, res) => {
 async function handleLineEvent(event) {
     const client = new line.Client(config);
 
-    // ★ボタンが押された時の処理
     if (event.type === 'postback') {
         const data = new URLSearchParams(event.postback.data);
         const videoId = data.get('videoId');
-
-        // PCへ送信
         io.emit('add-queue', { videoId, title: 'LINEからのリクエスト', source: 'LINE' });
-        
-        return client.replyMessage(event.replyToken, { 
-            type: 'text', 
-            text: `✅ リクエストを受け付けました！\n(再生まで少しお待ちください)` 
-        });
+        return client.replyMessage(event.replyToken, { type: 'text', text: `✅ リクエストを受け付けました！\n(再生まで少しお待ちください)` });
     }
 
-    // テキストメッセージ
     if (event.type === 'message' && event.message.type === 'text') {
         const text = event.message.text;
+
+        // ★追加: defaultコマンド (LINE版)
+        if (text.startsWith('default ')) {
+            const query = text.replace('default ', '').trim();
+            let newId = extractYouTubeId(query);
+            
+            // URLじゃなければ検索してトップの結果を使う
+            if (!newId && YOUTUBE_API_KEY) {
+                try {
+                    const items = await searchYouTube(query);
+                    if (items.length > 0) newId = items[0].id.videoId;
+                } catch(e) {}
+            }
+
+            if (newId) {
+                currentDefaultId = newId; // サーバー変数を更新
+                io.emit('update-default', { videoId: newId }); // 全員に通知
+                io.emit('chat-message', `🔄 LINEからデフォルトBGMが変更されました`);
+                return client.replyMessage(event.replyToken, { type: 'text', text: '✅ デフォルトBGMを変更しました！' });
+            } else {
+                return client.replyMessage(event.replyToken, { type: 'text', text: '⚠️ 動画が見つかりませんでした。' });
+            }
+        }
 
         // 1. コメント (#)
         if (text.startsWith('#')) {
@@ -66,61 +81,37 @@ async function handleLineEvent(event) {
 
         try {
             const items = await searchYouTube(text);
-            
             if (!items || items.length === 0) {
-                return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした（または検索上限です）' });
+                return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした' });
             }
 
-            // ★修正ポイント: labelをactionの中に入れました
             const bubbles = items.map(item => ({
-                type: "bubble",
-                size: "kilo",
-                hero: { 
-                    type: "image", 
-                    url: item.snippet.thumbnails.high ? item.snippet.thumbnails.high.url : "https://via.placeholder.com/320x180?text=No+Image",
-                    size: "full", aspectRatio: "16:9", aspectMode: "cover" 
-                },
-                body: { 
-                    type: "box", layout: "vertical", 
-                    contents: [{ type: "text", text: item.snippet.title, wrap: true, weight: "bold", size: "sm" }] 
-                },
+                type: "bubble", size: "kilo",
+                hero: { type: "image", url: item.snippet.thumbnails.high ? item.snippet.thumbnails.high.url : "https://via.placeholder.com/320x180", size: "full", aspectRatio: "16:9", aspectMode: "cover" },
+                body: { type: "box", layout: "vertical", contents: [{ type: "text", text: item.snippet.title, wrap: true, weight: "bold", size: "sm" }] },
                 footer: {
                     type: "box", layout: "vertical",
                     contents: [{
-                        type: "button", 
-                        style: "primary", 
-                        color: "#1DB446", 
-                        // labelプロパティを削除し、actionの中に移動
-                        action: { 
-                            type: "postback", 
-                            label: "予約する", // ←ここに移動しました！
-                            data: `videoId=${item.id.videoId}` 
-                        }
+                        type: "button", style: "primary", color: "#1DB446",
+                        action: { type: "postback", label: "予約する", data: `videoId=${item.id.videoId}` }
                     }]
                 }
             }));
-
-            return client.replyMessage(event.replyToken, { 
-                type: "flex", 
-                altText: "検索結果", 
-                contents: { type: "carousel", contents: bubbles } 
-            });
+            return client.replyMessage(event.replyToken, { type: "flex", altText: "検索結果", contents: { type: "carousel", contents: bubbles } });
 
         } catch (error) {
             console.error("YouTube Search Error:", error);
-            return client.replyMessage(event.replyToken, { 
-                type: 'text', 
-                text: `⚠️ エラーが発生しました。\nURLを直接貼ってお試しください。` 
-            });
+            return client.replyMessage(event.replyToken, { type: 'text', text: `⚠️ エラーが発生しました。\nURLを直接貼ってお試しください。` });
         }
     }
 }
 
-// --- Socket.io ---
+// --- Socket.io (Web版) ---
 io.on('connection', (socket) => {
     socket.emit('init-state', { defaultId: currentDefaultId });
 
     socket.on('client-input', async (text) => {
+        // ★修正: Webからの入力でも default コマンドの処理はここ
         if (text.startsWith('default ')) {
             const query = text.replace('default ', '').trim();
             let newId = extractYouTubeId(query);
@@ -133,20 +124,13 @@ io.on('connection', (socket) => {
             if (newId) {
                 currentDefaultId = newId;
                 io.emit('update-default', { videoId: newId });
-                io.emit('chat-message', `🔄 デフォルトBGMを変更しました`);
+                io.emit('chat-message', `🔄 PCからデフォルトBGMが変更されました`);
             }
             return;
         }
         
-        if (text.startsWith('#')) {
-            io.emit('flow-comment', text);
-            return;
-        }
-
-        if (isUrl(text) || isCommand(text)) {
-            io.emit('chat-message', text);
-            return;
-        }
+        if (text.startsWith('#')) { io.emit('flow-comment', text); return; }
+        if (isUrl(text) || isCommand(text)) { io.emit('chat-message', text); return; }
 
         if (YOUTUBE_API_KEY) {
             try {
@@ -169,7 +153,6 @@ function extractYouTubeId(url) {
     const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
     return (match && match[2].length === 11) ? match[2] : null;
 }
-
 async function searchYouTube(query) {
     if (!YOUTUBE_API_KEY) throw new Error("No API Key");
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&type=video&maxResults=3`;
