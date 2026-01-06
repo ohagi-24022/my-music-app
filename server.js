@@ -16,6 +16,31 @@ const io = new Server(server);
 
 let currentDefaultId = "QngwLXMRTSc"; // 初期値
 
+// 全角英数字・スペースを半角に直す関数
+function toHalfWidth(str) {
+    if (!str) return "";
+    return str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(s) {
+        return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
+    }).replace(/　/g, ' ').trim();
+}
+
+// ★コマンド解析用関数（カッコやスペースを柔軟に処理）
+function parseDefaultCommand(text) {
+    const normalized = toHalfWidth(text);
+    // "default" で始まり、その後に " " か "[" が続く、もしくは "default" だけの場合などを検知
+    const match = normalized.match(/^default\s*\[?(.+?)\]?$/i) || normalized.match(/^default\s+(.+)$/i);
+    
+    if (match) {
+        // マッチした場合、中身（URLやキーワード）を返す
+        return match[1].trim(); 
+    }
+    // "default[...]" のようなスペース無しのパターンもカバー
+    if (normalized.toLowerCase().startsWith('default[')) {
+        return normalized.substring(7).replace(/\]$/, '').trim();
+    }
+    return null;
+}
+
 // --- LINE Webhook ---
 app.post('/callback', line.middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleLineEvent))
@@ -33,28 +58,31 @@ async function handleLineEvent(event) {
         const data = new URLSearchParams(event.postback.data);
         const videoId = data.get('videoId');
         io.emit('add-queue', { videoId, title: 'LINEからのリクエスト', source: 'LINE' });
-        return client.replyMessage(event.replyToken, { type: 'text', text: `✅ リクエストを受け付けました！\n(再生まで少しお待ちください)` });
+        return client.replyMessage(event.replyToken, { 
+            type: 'text', text: `✅ リクエストを受け付けました！\n(再生まで少しお待ちください)` 
+        });
     }
 
     if (event.type === 'message' && event.message.type === 'text') {
-        const text = event.message.text;
+        const rawText = event.message.text;
 
-        // ★追加: defaultコマンド (LINE版)
-        if (text.startsWith('default ')) {
-            const query = text.replace('default ', '').trim();
-            let newId = extractYouTubeId(query);
+        // ★ defaultコマンド (判定ロジックを変更)
+        const defaultCommandQuery = parseDefaultCommand(rawText);
+        
+        if (defaultCommandQuery) {
+            let newId = extractYouTubeId(defaultCommandQuery);
             
-            // URLじゃなければ検索してトップの結果を使う
+            // URLじゃなければ検索
             if (!newId && YOUTUBE_API_KEY) {
                 try {
-                    const items = await searchYouTube(query);
+                    const items = await searchYouTube(defaultCommandQuery);
                     if (items.length > 0) newId = items[0].id.videoId;
                 } catch(e) {}
             }
 
             if (newId) {
-                currentDefaultId = newId; // サーバー変数を更新
-                io.emit('update-default', { videoId: newId }); // 全員に通知
+                currentDefaultId = newId;
+                io.emit('update-default', { videoId: newId });
                 io.emit('chat-message', `🔄 LINEからデフォルトBGMが変更されました`);
                 return client.replyMessage(event.replyToken, { type: 'text', text: '✅ デフォルトBGMを変更しました！' });
             } else {
@@ -62,15 +90,16 @@ async function handleLineEvent(event) {
             }
         }
 
-        // 1. コメント (#)
-        if (text.startsWith('#')) {
-            io.emit('flow-comment', text);
+        // 1. コメント
+        if (rawText.startsWith('#')) {
+            io.emit('flow-comment', rawText);
             return;
         }
 
         // 2. URL or コマンド
-        if (isUrl(text) || isCommand(text)) {
-            io.emit('chat-message', text);
+        const normalizedText = toHalfWidth(rawText);
+        if (isUrl(normalizedText) || isCommand(normalizedText)) {
+            io.emit('chat-message', normalizedText); 
             return client.replyMessage(event.replyToken, { type: 'text', text: '✅ 受け付けました' });
         }
 
@@ -80,9 +109,9 @@ async function handleLineEvent(event) {
         }
 
         try {
-            const items = await searchYouTube(text);
+            const items = await searchYouTube(rawText);
             if (!items || items.length === 0) {
-                return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした' });
+                return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした（または検索上限です）' });
             }
 
             const bubbles = items.map(item => ({
@@ -110,14 +139,15 @@ async function handleLineEvent(event) {
 io.on('connection', (socket) => {
     socket.emit('init-state', { defaultId: currentDefaultId });
 
-    socket.on('client-input', async (text) => {
-        // ★修正: Webからの入力でも default コマンドの処理はここ
-        if (text.startsWith('default ')) {
-            const query = text.replace('default ', '').trim();
-            let newId = extractYouTubeId(query);
+    socket.on('client-input', async (rawText) => {
+        // ★ defaultコマンド (Web版)
+        const defaultCommandQuery = parseDefaultCommand(rawText);
+
+        if (defaultCommandQuery) {
+            let newId = extractYouTubeId(defaultCommandQuery);
             if (!newId && YOUTUBE_API_KEY) {
                 try {
-                    const items = await searchYouTube(query);
+                    const items = await searchYouTube(defaultCommandQuery);
                     if (items.length > 0) newId = items[0].id.videoId;
                 } catch(e) {}
             }
@@ -129,12 +159,18 @@ io.on('connection', (socket) => {
             return;
         }
         
-        if (text.startsWith('#')) { io.emit('flow-comment', text); return; }
-        if (isUrl(text) || isCommand(text)) { io.emit('chat-message', text); return; }
+        if (rawText.startsWith('#')) {
+            io.emit('flow-comment', rawText); return; 
+        }
+
+        const normalizedText = toHalfWidth(rawText);
+        if (isUrl(normalizedText) || isCommand(normalizedText)) { 
+            io.emit('chat-message', normalizedText); return; 
+        }
 
         if (YOUTUBE_API_KEY) {
             try {
-                const items = await searchYouTube(text);
+                const items = await searchYouTube(rawText);
                 socket.emit('search-results', items);
             } catch(e) {}
         }
