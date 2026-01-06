@@ -5,58 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chat Music Player</title>
     <style>
-        /* --- 全体設定 --- */
-        body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; background-color: #111; margin: 0; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
-        
+        /* (前回のCSSと同じですが、カードのボタン色を変えるクラスを追加) */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; background-color: #111; margin: 0; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
         .app-container { width: 100%; height: 100%; max-width: 1400px; background-color: #f0f0f0; display: flex; flex-direction: row; overflow: hidden; }
         
-        /* --- 動画セクション --- */
         .video-section { flex: 2; background-color: #000; display: flex; flex-direction: column; position: relative; justify-content: center; }
         #player { width: 100%; height: 100%; }
-        
-        /* 弾幕オーバーレイ */
         #comment-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; z-index: 20; }
         .flowing-text { position: absolute; white-space: nowrap; color: white; font-weight: bold; text-shadow: 2px 2px 0 #000; font-size: 24px; will-change: transform; }
 
-        /* --- チャットセクション --- */
         .chat-section { flex: 1; min-width: 320px; display: flex; flex-direction: column; background-color: #7296F3; border-left: 1px solid #333; position: relative; }
-
         #favorites-area { background: #5b78c7; padding: 8px; overflow-x: auto; white-space: nowrap; flex-shrink: 0; }
         .fav-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 15px; font-size: 12px; margin-right: 5px; cursor: pointer; }
 
-        /* ★ここ重要！スクロールエリアの設定 */
-        #chat-area { 
-            flex-grow: 1; 
-            padding: 15px; 
-            overflow-y: auto; 
-            background-color: #8fb6eb; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 10px; 
-            -webkit-overflow-scrolling: touch; 
-        }
-        
-        /* ★ここに flex-shrink: 0 を追加！これで潰れなくなります */
-        .message { 
-            flex-shrink: 0; 
-            max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px; background-color: #fff; align-self: flex-start; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
-        }
+        #chat-area { flex-grow: 1; padding: 15px; overflow-y: auto; background-color: #8fb6eb; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
+        .message { flex-shrink: 0; max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px; background-color: #fff; align-self: flex-start; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .message.system { align-self: center; background-color: rgba(255,255,255,0.4); color: #fff; padding: 4px 10px; font-size: 11px; }
 
-        /* ★検索結果カードにも flex-shrink: 0 を追加！ */
-        .search-result-card { 
-            flex-shrink: 0; 
-            background: white; border-radius: 8px; overflow: hidden; width: 90%; align-self: flex-end; margin-bottom: 5px; display: flex; height: 80px; 
-        }
+        .search-result-card { flex-shrink: 0; background: white; border-radius: 8px; overflow: hidden; width: 90%; align-self: flex-end; margin-bottom: 5px; display: flex; height: 80px; }
         .card-img { width: 100px; height: 100%; object-fit: cover; cursor: pointer; }
         .card-body { padding: 8px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
         .card-title { font-size: 12px; font-weight: bold; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        
         .card-btn { background: #1DB446; color: white; border: none; border-radius: 4px; font-size: 11px; padding: 4px; cursor: pointer; }
+        /* ★デフォルト設定用ボタンの色（赤系） */
+        .card-btn.default-mode { background: #E04F5F; }
 
         .input-area { background: #fff; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #ddd; flex-shrink: 0; }
         input[type="text"] { flex-grow: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; font-size: 16px; }
         button.send-btn { padding: 0 20px; border-radius: 20px; background-color: #2d9bf0; color: white; border: none; font-weight: bold; cursor: pointer; white-space: nowrap;}
-
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 100; flex-direction: column; color: white; }
 
         @media (max-width: 768px) {
@@ -78,7 +55,6 @@
             <div id="player"></div>
             <div id="comment-layer"></div>
         </div>
-        
         <div class="chat-section">
             <div id="favorites-area"></div>
             <div id="chat-area"></div>
@@ -95,9 +71,7 @@
     <script>
         const favorites = [
             { id: "jfKfPfyJRdk", label: "Lofi Girl" },
-            { id: "5qap5aO4i9A", label: "Lofi HipHop" },
-            { id: "4xDzrJKXOOY", label: "Synthwave" },
-            { id: "wbZ0327z8eE", label: "Jazz" }
+            { id: "5qap5aO4i9A", label: "Lofi HipHop" }
         ];
 
         const socket = io();
@@ -106,15 +80,11 @@
         let isPlayingUserContent = false;
         let currentDefaultId = "jfKfPfyJRdk";
 
-        socket.on('init-state', (data) => {
-            currentDefaultId = data.defaultId;
-        });
+        socket.on('init-state', (data) => { currentDefaultId = data.defaultId; });
 
         socket.on('update-default', (data) => {
             currentDefaultId = data.videoId;
-            if (!isPlayingUserContent && player) {
-                playDefaultBGM();
-            }
+            if (!isPlayingUserContent && player) playDefaultBGM();
         });
 
         socket.on('chat-message', (msg) => {
@@ -132,27 +102,45 @@
             queueVideo(data.videoId);
         });
 
+        // 通常検索結果の表示
         socket.on('search-results', (items) => {
             addSystemMessage("🔍 検索結果 (タップで予約):");
+            renderSearchResults(items, false);
+        });
+
+        // ★デフォルト変更用の検索結果の表示
+        socket.on('search-results-for-default', (items) => {
+            addSystemMessage("🛠️ デフォルト設定を選択:");
+            renderSearchResults(items, true); // true = defaultMode
+        });
+
+        socket.on('flow-comment', (text) => spawnComment(text));
+
+        // 検索結果のカードを作る関数（共通化）
+        function renderSearchResults(items, isDefaultMode) {
             const chatArea = document.getElementById('chat-area');
             items.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'search-result-card';
+                
+                const btnLabel = isDefaultMode ? "デフォルトに設定" : "予約する";
+                const btnClass = isDefaultMode ? "card-btn default-mode" : "card-btn";
+                // クリック時の動作を切り替え
+                const onClickAction = isDefaultMode 
+                    ? `selectDefault('${item.id.videoId}', '${item.snippet.title.replace(/'/g, "\\'")}')`
+                    : `selectVideo('${item.id.videoId}', '${item.snippet.title.replace(/'/g, "\\'")}')`;
+
                 card.innerHTML = `
-                    <img src="${item.snippet.thumbnails.high.url}" class="card-img" onclick="selectVideo('${item.id.videoId}', '${item.snippet.title}')">
+                    <img src="${item.snippet.thumbnails.high.url}" class="card-img" onclick="${onClickAction}">
                     <div class="card-body">
                         <div class="card-title">${item.snippet.title}</div>
-                        <button class="card-btn" onclick="selectVideo('${item.id.videoId}', '${item.snippet.title}')">予約</button>
+                        <button class="${btnClass}" onclick="${onClickAction}">${btnLabel}</button>
                     </div>
                 `;
                 chatArea.appendChild(card);
             });
             chatArea.scrollTop = chatArea.scrollHeight;
-        });
-
-        socket.on('flow-comment', (text) => {
-            spawnComment(text);
-        });
+        }
 
         function sendChat() {
             const input = document.getElementById('message-input');
@@ -166,60 +154,18 @@
             socket.emit('select-video', { videoId, title });
         }
 
+        // ★ 新追加: デフォルト設定を選択した時
+        function selectDefault(videoId, title) {
+            socket.emit('select-default', { videoId, title });
+            addSystemMessage(`🔄 設定中...`);
+        }
+
         function queueVideo(videoId) {
             queue.push(videoId);
             if (!isPlayingUserContent) playNext();
         }
 
-        function spawnComment(rawText) {
-            const layer = document.getElementById('comment-layer');
-            const el = document.createElement('div');
-            el.className = 'flowing-text';
-            let content = rawText.replace(/^#\s*/, '');
-            let color = 'white';
-            let fontSize = '24px';
-            let positionMode = 'flow'; 
-
-            const commands = ['red', 'blue', 'green', 'yellow', 'pink', 'big', 'small', 'shita', 'ue'];
-            const words = content.split(' ');
-            
-            while (words.length > 0 && commands.includes(words[0])) {
-                const cmd = words.shift();
-                if (cmd === 'red') color = '#ff0000';
-                if (cmd === 'blue') color = '#00ffff';
-                if (cmd === 'green') color = '#00ff00';
-                if (cmd === 'yellow') color = '#ffff00';
-                if (cmd === 'pink') color = '#ff00ff';
-                if (cmd === 'big') fontSize = '36px';
-                if (cmd === 'small') fontSize = '16px';
-                if (cmd === 'shita') positionMode = 'shita';
-                if (cmd === 'ue') positionMode = 'ue';
-            }
-            content = words.join(' ');
-
-            el.innerText = content;
-            el.style.color = color;
-            el.style.fontSize = fontSize;
-            layer.appendChild(el);
-
-            if (positionMode === 'flow') {
-                el.style.top = Math.random() * 80 + '%';
-                el.style.right = '-100%';
-                const duration = 5000 + Math.random() * 2000;
-                const anim = el.animate([
-                    { transform: 'translateX(100vw)' },
-                    { transform: 'translateX(-100vw)' }
-                ], { duration: duration, easing: 'linear' });
-                anim.onfinish = () => el.remove();
-            } else if (positionMode === 'shita') {
-                el.style.bottom = '10%'; el.style.left = '50%'; el.style.transform = 'translateX(-50%)';
-                setTimeout(() => el.remove(), 3000);
-            } else if (positionMode === 'ue') {
-                el.style.top = '10%'; el.style.left = '50%'; el.style.transform = 'translateX(-50%)';
-                setTimeout(() => el.remove(), 3000);
-            }
-        }
-
+        // ... (以下、前回と同じプレイヤー関連の関数) ...
         function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
                 height: '100%', width: '100%', videoId: currentDefaultId,
@@ -247,6 +193,35 @@
         function playDefaultBGM() {
             isPlayingUserContent = false;
             player.loadVideoById(currentDefaultId);
+        }
+
+        // ... (以下、コメント流し機能など前回と同じ) ...
+        function spawnComment(rawText) {
+            const layer = document.getElementById('comment-layer');
+            const el = document.createElement('div');
+            el.className = 'flowing-text';
+            let content = rawText.replace(/^#\s*/, '');
+            let color = 'white'; let fontSize = '24px'; let positionMode = 'flow';
+            const commands = ['red', 'blue', 'green', 'yellow', 'pink', 'big', 'small', 'shita', 'ue'];
+            const words = content.split(' ');
+            while (words.length > 0 && commands.includes(words[0])) {
+                const cmd = words.shift();
+                if (cmd === 'red') color = '#ff0000'; if (cmd === 'blue') color = '#00ffff'; if (cmd === 'green') color = '#00ff00';
+                if (cmd === 'yellow') color = '#ffff00'; if (cmd === 'pink') color = '#ff00ff'; if (cmd === 'big') fontSize = '36px';
+                if (cmd === 'small') fontSize = '16px'; if (cmd === 'shita') positionMode = 'shita'; if (cmd === 'ue') positionMode = 'ue';
+            }
+            content = words.join(' ');
+            el.innerText = content; el.style.color = color; el.style.fontSize = fontSize;
+            layer.appendChild(el);
+            if (positionMode === 'flow') {
+                el.style.top = Math.random() * 80 + '%'; el.style.right = '-100%';
+                const anim = el.animate([{ transform: 'translateX(100vw)' }, { transform: 'translateX(-100vw)' }], { duration: 5000 + Math.random() * 2000, easing: 'linear' });
+                anim.onfinish = () => el.remove();
+            } else if (positionMode === 'shita') {
+                el.style.bottom = '10%'; el.style.left = '50%'; el.style.transform = 'translateX(-50%)'; setTimeout(() => el.remove(), 3000);
+            } else if (positionMode === 'ue') {
+                el.style.top = '10%'; el.style.left = '50%'; el.style.transform = 'translateX(-50%)'; setTimeout(() => el.remove(), 3000);
+            }
         }
 
         function addMessageToScreen(text) {
