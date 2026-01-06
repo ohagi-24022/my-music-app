@@ -21,7 +21,7 @@ app.post('/callback', line.middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleLineEvent))
         .then((result) => res.json(result))
         .catch((err) => {
-            console.error("LINE Webhook Error:", err);
+            console.error("LINE Webhook Error:", err.originalError?.response?.data || err);
             res.status(500).end();
         });
 });
@@ -29,13 +29,19 @@ app.post('/callback', line.middleware(config), (req, res) => {
 async function handleLineEvent(event) {
     const client = new line.Client(config);
 
-    // ポストバック（ボタンを押した時）
+    // ★修正ポイント1: ボタンが押された時の処理
     if (event.type === 'postback') {
         const data = new URLSearchParams(event.postback.data);
         const videoId = data.get('videoId');
-        const title = data.get('title');
-        io.emit('add-queue', { videoId, title, source: 'LINE' });
-        return client.replyMessage(event.replyToken, { type: 'text', text: `🎵 リクエスト予約: ${title}` });
+        // titleはデータに含まないので取得しない
+
+        // PCへ送信（タイトルは不明なので "LINEリクエスト" とする）
+        io.emit('add-queue', { videoId, title: 'LINEからのリクエスト', source: 'LINE' });
+        
+        return client.replyMessage(event.replyToken, { 
+            type: 'text', 
+            text: `✅ リクエストを受け付けました！\n(再生まで少しお待ちください)` 
+        });
     }
 
     // テキストメッセージ
@@ -45,10 +51,10 @@ async function handleLineEvent(event) {
         // 1. コメント (#)
         if (text.startsWith('#')) {
             io.emit('flow-comment', text);
-            return; // コメントは返信なし（うるさくなるので）
+            return;
         }
 
-        // 2. URL or コマンド (APIキー不要なので必ず動く)
+        // 2. URL or コマンド
         if (isUrl(text) || isCommand(text)) {
             io.emit('chat-message', text);
             return client.replyMessage(event.replyToken, { type: 'text', text: '✅ 受け付けました' });
@@ -59,15 +65,14 @@ async function handleLineEvent(event) {
             return client.replyMessage(event.replyToken, { type: 'text', text: '⚠️ サーバー設定エラー: APIキーがありません' });
         }
 
-        // 検索を実行
         try {
             const items = await searchYouTube(text);
             
             if (!items || items.length === 0) {
-                return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした（または検索上限を超えました）' });
+                return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした（または検索上限です）' });
             }
 
-            // 検索結果のボタンを作成
+            // ★修正ポイント2: ボタンに埋め込むデータを「IDだけ」にする
             const bubbles = items.map(item => ({
                 type: "bubble",
                 size: "kilo",
@@ -84,7 +89,8 @@ async function handleLineEvent(event) {
                     type: "box", layout: "vertical",
                     contents: [{
                         type: "button", style: "primary", color: "#1DB446", label: "予約する",
-                        action: { type: "postback", data: `videoId=${item.id.videoId}&title=${item.snippet.title.substring(0, 20)}...` }
+                        // ここ重要！ videoIdだけを送る（日本語タイトルは送らない）
+                        action: { type: "postback", data: `videoId=${item.id.videoId}` }
                     }]
                 }
             }));
@@ -97,10 +103,9 @@ async function handleLineEvent(event) {
 
         } catch (error) {
             console.error("YouTube Search Error:", error);
-            // エラーの内容をユーザーに教える
             return client.replyMessage(event.replyToken, { 
                 type: 'text', 
-                text: `⚠️ エラーが発生しました。\n1日の検索上限(100回)を超えた可能性があります。\n\n💡URLを直接貼れば制限なく再生できます！` 
+                text: `⚠️ エラーが発生しました。\nURLを直接貼ってお試しください。` 
             });
         }
     }
@@ -111,7 +116,6 @@ io.on('connection', (socket) => {
     socket.emit('init-state', { defaultId: currentDefaultId });
 
     socket.on('client-input', async (text) => {
-        // default コマンド
         if (text.startsWith('default ')) {
             const query = text.replace('default ', '').trim();
             let newId = extractYouTubeId(query);
@@ -119,7 +123,7 @@ io.on('connection', (socket) => {
                 try {
                     const items = await searchYouTube(query);
                     if (items.length > 0) newId = items[0].id.videoId;
-                } catch(e) { console.log("Default Search Error"); }
+                } catch(e) {}
             }
             if (newId) {
                 currentDefaultId = newId;
@@ -129,24 +133,21 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // 弾幕
         if (text.startsWith('#')) {
             io.emit('flow-comment', text);
             return;
         }
 
-        // URL / コマンド
         if (isUrl(text) || isCommand(text)) {
             io.emit('chat-message', text);
             return;
         }
 
-        // PCからの検索
         if (YOUTUBE_API_KEY) {
             try {
                 const items = await searchYouTube(text);
                 socket.emit('search-results', items);
-            } catch(e) { console.log("PC Search Error"); }
+            } catch(e) {}
         }
     });
 
@@ -157,7 +158,6 @@ io.on('connection', (socket) => {
 
 app.use(express.static('public'));
 
-// --- ヘルパー関数 ---
 function isUrl(text) { return text.includes('youtube.com') || text.includes('youtu.be'); }
 function isCommand(text) { return text === 'スキップ' || text.toLowerCase() === 'skip'; }
 function extractYouTubeId(url) {
@@ -165,10 +165,8 @@ function extractYouTubeId(url) {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// 検索関数（エラーをキャッチせずそのまま上に投げるように変更）
 async function searchYouTube(query) {
     if (!YOUTUBE_API_KEY) throw new Error("No API Key");
-    
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&type=video&maxResults=3`;
     const res = await axios.get(url);
     return res.data.items;
