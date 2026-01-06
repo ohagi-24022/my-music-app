@@ -14,6 +14,9 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// ★現在のデフォルト曲IDをサーバーで記憶しておく
+let currentDefaultId = "jfKfPfyJRdk"; // 初期値: Lofi Girl
+
 // --- LINE Webhook ---
 app.post('/callback', line.middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleLineEvent))
@@ -31,20 +34,28 @@ async function handleLineEvent(event) {
         const data = new URLSearchParams(event.postback.data);
         const videoId = data.get('videoId');
         const title = data.get('title');
-        io.emit('add-queue', { videoId, title, source: 'LINE' }); // 統一イベント名に変更
+        
+        // Postbackは常に再生予約とする
+        io.emit('add-queue', { videoId, title, source: 'LINE' });
         return client.replyMessage(event.replyToken, { type: 'text', text: `🎵 リクエスト予約: ${title}` });
     }
 
     if (event.type === 'message' && event.message.type === 'text') {
         const text = event.message.text;
-        
-        // URLまたはコマンド
+
+        // 1. コメント機能 (#で始まる場合)
+        if (text.startsWith('#')) {
+            io.emit('flow-comment', text); // 弾幕として送信
+            return client.replyMessage(event.replyToken, { type: 'text', text: '💬 動画にコメントを流しました' });
+        }
+
+        // 2. URL or コマンド
         if (isUrl(text) || isCommand(text)) {
             io.emit('chat-message', text);
             return client.replyMessage(event.replyToken, { type: 'text', text: '✅ 受け付けました' });
         }
 
-        // 検索処理
+        // 3. 検索処理
         const items = await searchYouTube(text);
         if (!items || items.length === 0) {
             return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした' });
@@ -66,40 +77,63 @@ async function handleLineEvent(event) {
     }
 }
 
-// --- PC(Socket.io) 通信処理 ---
+// --- Socket.io (ブラウザ通信) ---
 io.on('connection', (socket) => {
-    // クライアントからメッセージ受信
+    // 接続時に、現在のデフォルト曲を教える
+    socket.emit('init-state', { defaultId: currentDefaultId });
+
     socket.on('client-input', async (text) => {
-        
-        // 1. URL または コマンドの場合 -> 全員に送信して再生/スキップ
-        if (isUrl(text) || isCommand(text)) {
-            io.emit('chat-message', text); 
+        // A. デフォルト曲変更コマンド (default [URL/Word])
+        if (text.startsWith('default ')) {
+            const query = text.replace('default ', '').trim();
+            let newId = extractYouTubeId(query);
+            
+            // URLじゃなければ検索してトップの結果を使う
+            if (!newId && YOUTUBE_API_KEY) {
+                const items = await searchYouTube(query);
+                if (items.length > 0) newId = items[0].id.videoId;
+            }
+
+            if (newId) {
+                currentDefaultId = newId; // サーバー側更新
+                io.emit('update-default', { videoId: newId }); // 全員に通知
+                io.emit('chat-message', `🔄 デフォルトBGMが変更されました`);
+            }
             return;
         }
 
-        // 2. それ以外は「検索」とみなす (APIキーがある場合)
+        // B. 弾幕コメント (#)
+        if (text.startsWith('#')) {
+            io.emit('flow-comment', text);
+            return;
+        }
+
+        // C. URL, コマンド, 通常チャット
+        if (isUrl(text) || isCommand(text)) {
+            io.emit('chat-message', text);
+            return;
+        }
+
+        // D. 検索 (自分だけ)
         if (YOUTUBE_API_KEY) {
             const items = await searchYouTube(text);
-            // 検索結果は「送信者だけ」に返す (emit to socket only)
             socket.emit('search-results', items);
         }
     });
 
-    // PC側で「検索結果」や「お気に入り」がクリックされた時
     socket.on('select-video', (data) => {
-        // 全員に再生命令を送る
         io.emit('add-queue', { videoId: data.videoId, title: data.title, source: 'PC' });
     });
 });
 
 app.use(express.static('public'));
 
-// --- ヘルパー関数 ---
-function isUrl(text) {
-    return text.includes('youtube.com') || text.includes('youtu.be');
-}
-function isCommand(text) {
-    return text === 'スキップ' || text.toLowerCase() === 'skip';
+// --- ヘルパー ---
+function isUrl(text) { return text.includes('youtube.com') || text.includes('youtu.be'); }
+function isCommand(text) { return text === 'スキップ' || text.toLowerCase() === 'skip'; }
+function extractYouTubeId(url) {
+    const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+    return (match && match[2].length === 11) ? match[2] : null;
 }
 async function searchYouTube(query) {
     if (!YOUTUBE_API_KEY) return [];
@@ -107,10 +141,7 @@ async function searchYouTube(query) {
         const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&type=video&maxResults=3`;
         const res = await axios.get(url);
         return res.data.items;
-    } catch (e) {
-        console.error("Search Error", e);
-        return [];
-    }
+    } catch (e) { return []; }
 }
 
 const PORT = process.env.PORT || 3000;
