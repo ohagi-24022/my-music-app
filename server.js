@@ -14,7 +14,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-let currentDefaultId = "QngwLXMRTSc?si=1o7gp3Faji6cc0SP"; // 初期値
+let currentDefaultId = "watch?v=QngwLXMRTSc&list=RDQngwLXMRTSc&start_radio=1"; // 初期値
 
 // --- LINE Webhook ---
 app.post('/callback', line.middleware(config), (req, res) => {
