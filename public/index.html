@@ -5,173 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat Music Player</title>
     <style>
-        /* --- 全体のレイアウト設定 --- */
-        body {
-            font-family: "Helvetica Neue", Arial, sans-serif;
-            background-color: #202020; /* 映画館のような暗い背景 */
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden; /* 画面外スクロール防止 */
-        }
+        /* --- 基本レイアウト (前回と同じベース) --- */
+        body { font-family: "Helvetica Neue", Arial, sans-serif; background-color: #202020; margin: 0; height: 100vh; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        .app-container { width: 95%; height: 90vh; max-width: 1400px; background-color: #f0f0f0; display: flex; flex-direction: row; border-radius: 12px; overflow: hidden; }
+        
+        .video-section { flex: 2; background-color: #000; display: flex; flex-direction: column; position: relative; }
+        #player { width: 100%; height: 100%; }
+        .status-overlay { position: absolute; top: 0; width: 100%; padding: 10px; background: rgba(0,0,0,0.6); color: white; text-align: center; z-index: 10; }
 
-        /* アプリ全体の枠：画面いっぱい使いつつ余白を持たせる */
-        .app-container {
-            width: 95%;
-            height: 90vh;
-            max-width: 1400px; /* 超ワイド画面での広がりすぎ防止 */
-            background-color: #f0f0f0;
-            display: flex; /* 横並びにする魔法 */
-            flex-direction: row; 
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        }
+        .chat-section { flex: 1; min-width: 350px; max-width: 450px; display: flex; flex-direction: column; background-color: #7296F3; border-left: 1px solid #ccc; }
 
-        /* --- 左側：動画エリア (メイン) --- */
-        .video-section {
-            flex: 2; /* 画面の2/3を使う */
-            background-color: #000;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            position: relative;
-        }
-
-        #player {
-            width: 100%;
-            height: 100%;
-        }
-
-        /* 動画上のステータスバー */
-        .status-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
+        /* --- お気に入り(Favorites)エリア --- */
+        #favorites-area {
+            background: #5b78c7;
             padding: 10px;
-            background: rgba(0,0,0,0.6);
+            overflow-x: auto;
+            white-space: nowrap;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        .fav-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.4);
             color: white;
-            text-align: center;
-            font-size: 14px;
-            z-index: 10;
-        }
-
-        /* --- 右側：チャットエリア (サイドバー) --- */
-        .chat-section {
-            flex: 1; /* 画面の1/3を使う */
-            min-width: 350px; /* 狭くなりすぎないように */
-            max-width: 450px;
-            display: flex;
-            flex-direction: column;
-            background-color: #7296F3; /* LINE風背景色 */
-            border-left: 1px solid #ccc;
-        }
-
-        /* チャットログ表示部 */
-        #chat-area {
-            flex-grow: 1;
-            padding: 20px;
-            overflow-y: auto;
-            background-color: #8fb6eb;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        /* メッセージの吹き出しデザイン */
-        .message {
-            max-width: 85%;
-            padding: 12px 16px;
+            padding: 5px 12px;
             border-radius: 15px;
-            font-size: 15px;
-            line-height: 1.5;
-            position: relative;
-            word-wrap: break-word;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            background-color: #fff;
-            align-self: flex-start; /* 左寄せ */
-            border-top-left-radius: 0;
-        }
-
-        .message.system {
-            align-self: center;
-            background-color: rgba(255,255,255,0.3);
-            color: #fff;
             font-size: 12px;
-            padding: 5px 15px;
-            border-radius: 20px;
-            border: none;
-            box-shadow: none;
+            cursor: pointer;
+            margin-right: 5px;
+            transition: background 0.2s;
         }
+        .fav-btn:hover { background: rgba(255,255,255,0.4); }
+
+        /* --- チャットエリア --- */
+        #chat-area { flex-grow: 1; padding: 20px; overflow-y: auto; background-color: #8fb6eb; display: flex; flex-direction: column; gap: 15px; }
+        
+        .message { max-width: 85%; padding: 12px 16px; border-radius: 15px; font-size: 15px; background-color: #fff; align-self: flex-start; border-top-left-radius: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .message.system { align-self: center; background-color: rgba(255,255,255,0.3); color: #fff; font-size: 12px; padding: 5px 15px; border-radius: 20px; }
+
+        /* --- 検索結果カードのデザイン --- */
+        .search-result-card {
+            background: white; border-radius: 10px; overflow: hidden; width: 85%; align-self: flex-end; /* 右寄せ */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); margin-bottom: 5px;
+        }
+        .card-img { width: 100%; height: 120px; object-fit: cover; cursor: pointer; }
+        .card-body { padding: 10px; }
+        .card-title { font-size: 13px; font-weight: bold; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .card-btn { width: 100%; padding: 8px; background: #1DB446; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .card-btn:hover { opacity: 0.9; }
 
         /* 入力エリア */
-        .input-area {
-            background: #fff;
-            padding: 20px;
-            display: flex;
-            gap: 10px;
-            border-top: 1px solid #ddd;
-        }
+        .input-area { background: #fff; padding: 20px; display: flex; gap: 10px; border-top: 1px solid #ddd; }
+        input[type="text"] { flex-grow: 1; padding: 12px; border-radius: 25px; border: 1px solid #ddd; outline: none; }
+        button.send-btn { padding: 0 25px; border-radius: 25px; border: none; background-color: #2d9bf0; color: white; font-weight: bold; cursor: pointer; }
 
-        input[type="text"] {
-            flex-grow: 1;
-            padding: 12px;
-            border-radius: 25px;
-            border: 1px solid #ddd;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
-        }
-        input[type="text"]:focus {
-            border-color: #2d9bf0;
-        }
-
-        button {
-            padding: 0 25px;
-            border-radius: 25px;
-            border: none;
-            background-color: #2d9bf0;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover { background-color: #1a8ad4; }
-
-        /* オーバーレイ（スタートボタン） */
-        #overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            display: flex; justify-content: center; align-items: center;
-            color: white; z-index: 999; flex-direction: column;
-        }
-        #start-btn {
-            margin-top: 20px; padding: 15px 40px; font-size: 1.2rem;
-            background: #1DB446; /* LINEカラー */
-        }
-
-        /* スマホ対応：画面が狭いときは縦並びに戻す */
-        @media (max-width: 768px) {
-            .app-container {
-                flex-direction: column;
-                height: 100vh;
-                width: 100%;
-                border-radius: 0;
-            }
-            .video-section { flex: none; height: 35vh; }
-            .chat-section { flex: 1; min-width: 0; max-width: none; }
-        }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; color: white; z-index: 999; flex-direction: column; }
     </style>
 </head>
 <body>
-
     <div id="overlay">
         <h1>Music Chat Player</h1>
-        <p>BGMとチャットを同期します</p>
-        <button id="start-btn">スタート</button>
+        <button id="start-btn" style="padding:15px 40px; font-size:1.2rem; background:#1DB446; border:none; color:white; border-radius:30px; cursor:pointer;">スタート</button>
     </div>
 
     <div class="app-container">
@@ -181,12 +74,14 @@
         </div>
         
         <div class="chat-section">
-            <div id="chat-area">
+            <div id="favorites-area">
                 </div>
+
+            <div id="chat-area"></div>
             
             <div class="input-area">
-                <input type="text" id="message-input" placeholder="YouTube URL または メッセージ..." autocomplete="off">
-                <button onclick="sendChat()">送信</button>
+                <input type="text" id="message-input" placeholder="検索ワード または URL..." autocomplete="off">
+                <button class="send-btn" onclick="sendChat()">送信</button>
             </div>
         </div>
     </div>
@@ -195,36 +90,37 @@
     <script src="https://www.youtube.com/iframe_api"></script>
 
     <script>
+        // ★ここにお気に入りの曲を登録してください！
+        // id: YouTubeの動画ID, label: ボタンに表示する名前
+        const favorites = [
+            { id: "jfKfPfyJRdk", label: "Lo-Fi Girl" },
+            { id: "m7U-5_N0-lM", label: "カフェBGM" },
+            { id: "ZRtdQ81jPUQ", label: "YOASOBI" },
+            { id: "M7lc1UVf-VE", label: "Example" }
+        ];
+
+        // --- 初期化処理 ---
         const socket = io();
         let player;
         let queue = [];
         let isPlayingUserContent = false;
-        let currentDefaultId = "jfKfPfyJRdk"; // デフォルトBGM (Lofi Girl)
+        let currentDefaultId = favorites[0].id; // 最初の曲をデフォルトにする
 
-        // YouTube API準備
-        function onYouTubeIframeAPIReady() {
-            player = new YT.Player('player', {
-                height: '100%',
-                width: '100%',
-                videoId: currentDefaultId,
-                playerVars: { 'playsinline': 1, 'rel': 0 },
-                events: { 'onStateChange': onPlayerStateChange }
-            });
-        }
-
-        // スタートボタン
-        document.getElementById('start-btn').addEventListener('click', () => {
-            document.getElementById('overlay').style.display = 'none';
-            playDefaultBGM();
+        // お気に入りボタンを生成
+        const favArea = document.getElementById('favorites-area');
+        favorites.forEach(fav => {
+            const btn = document.createElement('button');
+            btn.className = 'fav-btn';
+            btn.innerText = fav.label;
+            btn.onclick = () => selectVideo(fav.id, fav.label);
+            favArea.appendChild(btn);
         });
 
-        // サーバーからの受信
+        // --- Socket受信 ---
         socket.on('chat-message', (msg) => {
             addMessageToScreen(msg);
-            
             const videoId = extractYouTubeId(msg);
             
-            // スキップ
             if (msg === "スキップ" || msg.toLowerCase() === "skip") {
                 if (isPlayingUserContent) {
                     addSystemMessage("⏭️ スキップしました");
@@ -232,37 +128,77 @@
                 }
                 return;
             }
-
-            // URL受信
-            if (videoId) {
-                queue.push(videoId);
-                updateStatus(`予約追加 (待ち: ${queue.length}曲)`);
-                if (!isPlayingUserContent) {
-                    playNext();
-                }
-            }
+            if (videoId) queueVideo(videoId);
         });
 
-        // 送信処理
+        socket.on('add-queue', (data) => {
+            // LINEや検索結果から確定した曲が来た時
+            addSystemMessage(`🎵 ${data.source}から予約: ${data.title}`);
+            queueVideo(data.videoId);
+        });
+
+        socket.on('search-results', (items) => {
+            // 検索結果を表示 (自分にだけ見える)
+            addSystemMessage("🔍 検索結果 (クリックで予約):");
+            const chatArea = document.getElementById('chat-area');
+            
+            items.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'search-result-card';
+                card.innerHTML = `
+                    <img src="${item.snippet.thumbnails.high.url}" class="card-img" onclick="selectVideo('${item.id.videoId}', '${item.snippet.title}')">
+                    <div class="card-body">
+                        <div class="card-title">${item.snippet.title}</div>
+                        <button class="card-btn" onclick="selectVideo('${item.id.videoId}', '${item.snippet.title}')">再生予約</button>
+                    </div>
+                `;
+                chatArea.appendChild(card);
+            });
+            chatArea.scrollTop = chatArea.scrollHeight;
+        });
+
+        // --- 送信アクション ---
         function sendChat() {
             const input = document.getElementById('message-input');
             const text = input.value.trim();
             if(!text) return;
-            socket.emit('chat-message', text); // サーバーへ送信
+            
+            // サーバーへ送信 (URLなら全体へ、キーワードなら検索へ)
+            socket.emit('client-input', text);
+            
+            // 自分の画面にだけ薄く表示しておく
+            addSystemMessage(`送信: ${text}`);
             input.value = '';
         }
 
-        // 再生ロジック
-        function onPlayerStateChange(event) {
-            if (event.data === YT.PlayerState.ENDED) {
-                if (isPlayingUserContent) {
-                    playNext();
-                } else {
-                    player.playVideo(); // ループ再生
-                }
-            }
+        // 検索結果やお気に入りを選んだ時の処理
+        function selectVideo(videoId, title) {
+            socket.emit('select-video', { videoId, title });
         }
 
+        function queueVideo(videoId) {
+            queue.push(videoId);
+            updateStatus(`予約追加 (待ち: ${queue.length}曲)`);
+            if (!isPlayingUserContent) playNext();
+        }
+
+        // --- プレーヤー関連 (前回と同じ) ---
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('player', {
+                height: '100%', width: '100%', videoId: currentDefaultId,
+                playerVars: { 'playsinline': 1, 'rel': 0 },
+                events: { 'onStateChange': onPlayerStateChange }
+            });
+        }
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('overlay').style.display = 'none';
+            playDefaultBGM();
+        });
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
+                isPlayingUserContent ? playNext() : player.playVideo();
+            }
+        }
         function playNext() {
             if (queue.length > 0) {
                 const nextId = queue.shift();
@@ -273,31 +209,28 @@
                 playDefaultBGM();
             }
         }
-
         function playDefaultBGM() {
             isPlayingUserContent = false;
             player.loadVideoById(currentDefaultId);
             updateStatus("再生中: デフォルトBGM");
         }
 
-        // 画面表示ヘルパー
+        // --- UIヘルパー ---
         function addMessageToScreen(text) {
             const chatArea = document.getElementById('chat-area');
             const div = document.createElement('div');
+            div.className = 'message';
             
-            // URLが含まれるか、システムメッセージかで見た目を変える
             if (text.includes('youtube.com') || text.includes('youtu.be')) {
-                div.className = 'message system';
-                div.innerText = `🎵 曲がリクエストされました`;
+                // URLの場合はサムネイルを表示したいが、簡易的にリンク表示
+                 div.innerHTML = `🔗 <a href="${text}" target="_blank">動画リンク</a>`;
             } else {
-                div.className = 'message';
                 div.innerText = text;
             }
-            
+
             chatArea.appendChild(div);
             chatArea.scrollTop = chatArea.scrollHeight;
         }
-
         function addSystemMessage(text) {
             const chatArea = document.getElementById('chat-area');
             const div = document.createElement('div');
@@ -306,18 +239,12 @@
             chatArea.appendChild(div);
             chatArea.scrollTop = chatArea.scrollHeight;
         }
-
-        function updateStatus(text) {
-            document.getElementById('status-bar').innerText = text;
-        }
-
+        function updateStatus(text) { document.getElementById('status-bar').innerText = text; }
         function extractYouTubeId(url) {
             const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
             const match = url.match(regExp);
             return (match && match[2].length === 11) ? match[2] : null;
         }
-
-        // Enterキー送信対応
         document.getElementById('message-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendChat();
         });
