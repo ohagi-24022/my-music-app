@@ -29,13 +29,12 @@ app.post('/callback', line.middleware(config), (req, res) => {
 async function handleLineEvent(event) {
     const client = new line.Client(config);
 
-    // ★修正ポイント1: ボタンが押された時の処理
+    // ★ボタンが押された時の処理
     if (event.type === 'postback') {
         const data = new URLSearchParams(event.postback.data);
         const videoId = data.get('videoId');
-        // titleはデータに含まないので取得しない
 
-        // PCへ送信（タイトルは不明なので "LINEリクエスト" とする）
+        // PCへ送信
         io.emit('add-queue', { videoId, title: 'LINEからのリクエスト', source: 'LINE' });
         
         return client.replyMessage(event.replyToken, { 
@@ -72,7 +71,7 @@ async function handleLineEvent(event) {
                 return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした（または検索上限です）' });
             }
 
-            // ★修正ポイント2: ボタンに埋め込むデータを「IDだけ」にする
+            // ★修正ポイント: labelをactionの中に入れました
             const bubbles = items.map(item => ({
                 type: "bubble",
                 size: "kilo",
@@ -88,9 +87,15 @@ async function handleLineEvent(event) {
                 footer: {
                     type: "box", layout: "vertical",
                     contents: [{
-                        type: "button", style: "primary", color: "#1DB446", label: "予約する",
-                        // ここ重要！ videoIdだけを送る（日本語タイトルは送らない）
-                        action: { type: "postback", data: `videoId=${item.id.videoId}` }
+                        type: "button", 
+                        style: "primary", 
+                        color: "#1DB446", 
+                        // labelプロパティを削除し、actionの中に移動
+                        action: { 
+                            type: "postback", 
+                            label: "予約する", // ←ここに移動しました！
+                            data: `videoId=${item.id.videoId}` 
+                        }
                     }]
                 }
             }));
