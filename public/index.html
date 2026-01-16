@@ -87,8 +87,17 @@
         });
 
         socket.on('update-default', (data) => {
-            currentDefault = data; // { id: "...", type: "video/playlist" }
-            if (!isPlayingUserContent && player) playDefaultBGM();
+            console.log("Update Default:", data);
+            currentDefault = data;
+            
+            // ユーザーのリクエスト再生中じゃなければ、即座に切り替える
+            if (!isPlayingUserContent && player) {
+                // 一旦停止してから再生関数を呼ぶと確実です
+                player.stopVideo();
+                setTimeout(() => {
+                    playDefaultBGM();
+                }, 100); // ほんの少し待つのがコツ
+            }
         });
 
         socket.on('chat-message', (msg) => {
@@ -211,13 +220,18 @@
                 // プレイリストとしてロード
                 player.loadPlaylist({
                     list: currentDefault.id,
-                    listType: 'playlist'
+                    listType: 'playlist',
+                    index: 0, // ★最初から再生する指定を追加
+                    startSeconds: 0
                 });
-                player.setLoop(true); // リスト全体をループ設定
+                player.setLoop(true); // リスト全体をループ
             } else {
                 // 単曲としてロード
-                player.loadVideoById(currentDefault.id);
-                player.setLoop(false); // 単曲ループはENDEDイベントで制御する
+                player.loadVideoById({
+                    videoId: currentDefault.id,
+                    startSeconds: 0
+                });
+                player.setLoop(false); // 単曲ループはENDEDイベントで制御
             }
         }
 
