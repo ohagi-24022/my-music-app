@@ -14,7 +14,12 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-let currentDefaultId = "7Q3BGAPAGQY"; // 初期値
+// ★変更: デフォルト設定をオブジェクトで管理
+let currentDefault = { 
+    id: "jfKfPfyJRdk", 
+    type: "video", // "video" か "playlist"
+    title: "Lofi Girl"
+};
 
 function toHalfWidth(str) {
     if (!str) return "";
@@ -33,6 +38,23 @@ function parseDefaultCommand(text) {
     return null;
 }
 
+function extractPlaylistId(url) {
+    const match = url.match(/[?&]list=([^#\&\?]+)/);
+    return match ? match[1] : null;
+}
+
+function extractYouTubeId(url) {
+    const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
+
+async function getPlaylistItems(playlistId) {
+    if (!YOUTUBE_API_KEY) return [];
+    const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=20&key=${YOUTUBE_API_KEY}`;
+    const res = await axios.get(url);
+    return res.data.items;
+}
+
 // --- LINE Webhook ---
 app.post('/callback', line.middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleLineEvent))
@@ -46,53 +68,53 @@ app.post('/callback', line.middleware(config), (req, res) => {
 async function handleLineEvent(event) {
     const client = new line.Client(config);
 
-    // ★ ポストバック処理（ボタンが押された時）
     if (event.type === 'postback') {
         const data = new URLSearchParams(event.postback.data);
         const videoId = data.get('videoId');
-        const mode = data.get('mode'); // ★モード判定を追加
+        const mode = data.get('mode');
 
-        // A. デフォルト変更モードの場合
+        // ★デフォルト変更（検索結果ボタンから）は単曲扱い
         if (mode === 'default') {
-            currentDefaultId = videoId;
-            io.emit('update-default', { videoId: videoId });
+            currentDefault = { id: videoId, type: 'video', title: 'LINE変更' };
+            io.emit('update-default', currentDefault);
             io.emit('chat-message', `🔄 LINEからデフォルトBGMが変更されました`);
-            return client.replyMessage(event.replyToken, { 
-                type: 'text', text: `✅ デフォルトBGMを変更しました！` 
-            });
+            return client.replyMessage(event.replyToken, { type: 'text', text: `✅ デフォルトBGMを変更しました！` });
         }
 
-        // B. 通常の予約モードの場合
         io.emit('add-queue', { videoId, title: 'LINEからのリクエスト', source: 'LINE' });
-        return client.replyMessage(event.replyToken, { 
-            type: 'text', text: `✅ リクエストを受け付けました！` 
-        });
+        return client.replyMessage(event.replyToken, { type: 'text', text: `✅ リクエストを受け付けました！` });
     }
 
     if (event.type === 'message' && event.message.type === 'text') {
         const rawText = event.message.text;
 
-        // ★ defaultコマンド
+        // ★ defaultコマンド処理
         const defaultCommandQuery = parseDefaultCommand(rawText);
         if (defaultCommandQuery) {
-            let newId = extractYouTubeId(defaultCommandQuery);
+            
+            // 1. 再生リストIDがあるかチェック
+            const plistId = extractPlaylistId(defaultCommandQuery);
+            if (plistId) {
+                currentDefault = { id: plistId, type: 'playlist', title: 'Playlist' };
+                io.emit('update-default', currentDefault);
+                io.emit('chat-message', `🔄 デフォルトBGMをプレイリストに変更しました`);
+                return client.replyMessage(event.replyToken, { type: 'text', text: '✅ デフォルトをプレイリストに設定しました！' });
+            }
 
-            // 1. URLが直接指定された場合 → 即変更
+            // 2. なければ単曲動画IDチェック
+            let newId = extractYouTubeId(defaultCommandQuery);
             if (newId) {
-                currentDefaultId = newId;
-                io.emit('update-default', { videoId: newId });
+                currentDefault = { id: newId, type: 'video', title: 'Video' };
+                io.emit('update-default', currentDefault);
                 io.emit('chat-message', `🔄 LINEからデフォルトBGMが変更されました`);
                 return client.replyMessage(event.replyToken, { type: 'text', text: '✅ デフォルトBGMを変更しました！' });
             }
 
-            // 2. キーワードの場合 → 検索結果（選択肢）を返す
+            // 3. どちらでもなければキーワード検索（単曲選択肢を返す）
             if (YOUTUBE_API_KEY) {
                 try {
                     const items = await searchYouTube(defaultCommandQuery);
-                    if (!items || items.length === 0) {
-                        return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした' });
-                    }
-                    // ★「デフォルト設定用」のボタンを作成（mode=defaultをつける）
+                    if (!items || items.length === 0) return client.replyMessage(event.replyToken, { type: 'text', text: '😢 見つかりませんでした' });
                     const bubbles = createCarousel(items, "設定する", "default");
                     return client.replyMessage(event.replyToken, { type: "flex", altText: "デフォルト変更", contents: { type: "carousel", contents: bubbles } });
                 } catch (e) {
@@ -102,21 +124,34 @@ async function handleLineEvent(event) {
             return;
         }
 
-        // コメント、URL、通常検索など
         if (rawText.startsWith('#')) { io.emit('flow-comment', rawText); return; }
+
         const normalizedText = toHalfWidth(rawText);
+
+        // 再生リストからの一括予約（通常機能）
+        const playlistId = extractPlaylistId(normalizedText);
+        if (playlistId) {
+            try {
+                const items = await getPlaylistItems(playlistId);
+                if (items.length > 0) {
+                    items.forEach(item => {
+                        const vid = item.snippet.resourceId.videoId;
+                        if (vid) io.emit('add-queue', { videoId: vid, title: item.snippet.title, source: 'LINE(Playlist)' });
+                    });
+                    return client.replyMessage(event.replyToken, { type: 'text', text: `✅ 再生リストから${items.length}曲を予約しました！` });
+                }
+            } catch (e) {}
+        }
+
         if (isUrl(normalizedText) || isCommand(normalizedText)) { 
             io.emit('chat-message', normalizedText); 
             return client.replyMessage(event.replyToken, { type: 'text', text: '✅ 受け付けました' });
         }
 
-        // 通常検索
         if (YOUTUBE_API_KEY) {
             try {
                 const items = await searchYouTube(rawText);
                 if (!items || items.length === 0) return client.replyMessage(event.replyToken, { type: 'text', text: '😢 なし' });
-                
-                // ★通常の予約ボタン（mode=queue、または指定なし）
                 const bubbles = createCarousel(items, "予約する", "queue");
                 return client.replyMessage(event.replyToken, { type: "flex", altText: "検索結果", contents: { type: "carousel", contents: bubbles } });
             } catch (error) { return client.replyMessage(event.replyToken, { type: 'text', text: '⚠️ エラー' }); }
@@ -126,60 +161,82 @@ async function handleLineEvent(event) {
 
 // --- Socket.io (Web版) ---
 io.on('connection', (socket) => {
-    socket.emit('init-state', { defaultId: currentDefaultId });
+    // 初期状態としてオブジェクトを送る
+    socket.emit('init-state', { defaultData: currentDefault });
 
     socket.on('client-input', async (rawText) => {
-        // ★ defaultコマンド
         const defaultCommandQuery = parseDefaultCommand(rawText);
         if (defaultCommandQuery) {
+            
+            // 1. プレイリストチェック
+            const plistId = extractPlaylistId(defaultCommandQuery);
+            if (plistId) {
+                currentDefault = { id: plistId, type: 'playlist', title: 'Playlist' };
+                io.emit('update-default', currentDefault);
+                io.emit('chat-message', `🔄 デフォルトBGMをプレイリストに変更しました`);
+                return;
+            }
+
+            // 2. 単曲動画チェック
             let newId = extractYouTubeId(defaultCommandQuery);
-            // URLなら即変更
             if (newId) {
-                currentDefaultId = newId;
-                io.emit('update-default', { videoId: newId });
+                currentDefault = { id: newId, type: 'video', title: 'Video' };
+                io.emit('update-default', currentDefault);
                 io.emit('chat-message', `🔄 PCからデフォルトBGMが変更されました`);
                 return;
             }
-            // キーワードなら「デフォルト設定用」の検索結果を個別に返す
+
+            // 3. キーワード検索
             if (YOUTUBE_API_KEY) {
                 try {
                     const items = await searchYouTube(defaultCommandQuery);
-                    // ★特別なイベント名で返す
                     socket.emit('search-results-for-default', items);
                 } catch(e) {}
             }
             return;
         }
         
-        // 以下通常処理
         if (rawText.startsWith('#')) { io.emit('flow-comment', rawText); return; }
+
         const normalizedText = toHalfWidth(rawText);
+        const playlistId = extractPlaylistId(normalizedText);
+        if (playlistId) {
+            try {
+                const items = await getPlaylistItems(playlistId);
+                if (items.length > 0) {
+                    items.forEach(item => {
+                        const vid = item.snippet.resourceId.videoId;
+                        if (vid) io.emit('add-queue', { videoId: vid, title: item.snippet.title, source: 'PC(Playlist)' });
+                    });
+                    io.emit('chat-message', `📂 再生リストから${items.length}曲を追加しました`);
+                }
+            } catch(e) {}
+            return;
+        }
+
         if (isUrl(normalizedText) || isCommand(normalizedText)) { io.emit('chat-message', normalizedText); return; }
 
         if (YOUTUBE_API_KEY) {
             try {
                 const items = await searchYouTube(rawText);
-                socket.emit('search-results', items); // 通常検索結果
+                socket.emit('search-results', items);
             } catch(e) {}
         }
     });
 
-    // 通常の予約
     socket.on('select-video', (data) => {
         io.emit('add-queue', { videoId: data.videoId, title: data.title, source: 'PC' });
     });
 
-    // ★ 新追加: デフォルト変更の確定
     socket.on('select-default', (data) => {
-        currentDefaultId = data.videoId;
-        io.emit('update-default', { videoId: data.videoId });
+        currentDefault = { id: data.videoId, type: 'video', title: data.title };
+        io.emit('update-default', currentDefault);
         io.emit('chat-message', `🔄 PCからデフォルトBGMが変更されました: ${data.title}`);
     });
 });
 
 app.use(express.static('public'));
 
-// 共通ヘルパー: LINEのカルーセルを作る関数
 function createCarousel(items, buttonLabel, mode) {
     return items.map(item => ({
         type: "bubble", size: "kilo",
@@ -187,19 +244,14 @@ function createCarousel(items, buttonLabel, mode) {
         body: { type: "box", layout: "vertical", contents: [{ type: "text", text: item.snippet.title, wrap: true, weight: "bold", size: "sm" }] },
         footer: {
             type: "box", layout: "vertical", contents: [{
-                type: "button", style: "primary", color: mode === 'default' ? "#E04F5F" : "#1DB446", // デフォルト設定は赤色ボタン
-                action: { type: "postback", label: buttonLabel, data: `videoId=${item.id.videoId}&mode=${mode}` } // modeを埋め込む
+                type: "button", style: "primary", color: mode === 'default' ? "#E04F5F" : "#1DB446",
+                action: { type: "postback", label: buttonLabel, data: `videoId=${item.id.videoId}&mode=${mode}` }
             }]
         }
     }));
 }
-
 function isUrl(text) { return text.includes('youtube.com') || text.includes('youtu.be'); }
 function isCommand(text) { return text === 'スキップ' || text.toLowerCase() === 'skip'; }
-function extractYouTubeId(url) {
-    const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
-    return (match && match[2].length === 11) ? match[2] : null;
-}
 async function searchYouTube(query) {
     if (!YOUTUBE_API_KEY) throw new Error("No API Key");
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&type=video&maxResults=3`;
