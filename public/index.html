@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Oto-Ba</title>
+    <title>Otoba</title>
     <style>
-        /* (前回のCSSと同じですが、カードのボタン色を変えるクラスを追加) */
         body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; background-color: #111; margin: 0; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
         .app-container { width: 100%; height: 100%; max-width: 1400px; background-color: #f0f0f0; display: flex; flex-direction: row; overflow: hidden; }
         
@@ -26,16 +25,13 @@
         .card-img { width: 100px; height: 100%; object-fit: cover; cursor: pointer; }
         .card-body { padding: 8px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
         .card-title { font-size: 12px; font-weight: bold; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        
         .card-btn { background: #1DB446; color: white; border: none; border-radius: 4px; font-size: 11px; padding: 4px; cursor: pointer; }
-        /* ★デフォルト設定用ボタンの色（赤系） */
         .card-btn.default-mode { background: #E04F5F; }
 
         .input-area { background: #fff; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #ddd; flex-shrink: 0; }
         input[type="text"] { flex-grow: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; font-size: 16px; }
         button.send-btn { padding: 0 20px; border-radius: 20px; background-color: #2d9bf0; color: white; border: none; font-weight: bold; cursor: pointer; white-space: nowrap;}
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 100; flex-direction: column; color: white; }
-
         @media (max-width: 768px) {
             .app-container { flex-direction: column; }
             .video-section { height: 35vh; flex: none; }
@@ -46,8 +42,8 @@
 </head>
 <body>
     <div id="overlay">
-        <h2>Oto-Ba (オトバ)</h2>
-        <button id="start-btn" style="padding:15px 40px; font-size:1.2rem; background:#1DB446; border:none; color:white; border-radius:30px;">スタート</button>
+        <h2>Otoba</h2>
+        <button id="start-btn" style="padding:15px 40px; font-size:1.2rem; background:#1DB446; border:none; color:white; border-radius:30px;">Start</button>
     </div>
 
     <div class="app-container">
@@ -70,23 +66,25 @@
 
     <script>
         const favorites = [
-            { id: "hgyGhu49sGc", label: "FREEDOM" },
-            { id: "P_CSdxSGfaA", label: "アンノウンマザーグース" },
-            { id: "nIWZfhpnq6M", label: "桜日和とタイムマシン" },
-            { id: "hRJpiCZlLX8", label: "ロックスター" },
-            { id: "fp3F6TqBsAU", label: "pluzma" }
+            { id: "jfKfPfyJRdk", label: "Lofi Girl", type: "video" },
+            { id: "5qap5aO4i9A", label: "Lofi HipHop", type: "video" }
         ];
 
         const socket = io();
         let player;
         let queue = [];
         let isPlayingUserContent = false;
-        let currentDefaultId = "7Q3BGAPAGQY";
+        
+        // ★初期値はオブジェクト
+        let currentDefault = { id: "jfKfPfyJRdk", type: "video" };
 
-        socket.on('init-state', (data) => { currentDefaultId = data.defaultId; });
+        socket.on('init-state', (data) => { 
+            // サーバーから初期設定を受け取る
+            if(data.defaultData) currentDefault = data.defaultData; 
+        });
 
         socket.on('update-default', (data) => {
-            currentDefaultId = data.videoId;
+            currentDefault = data; // { id: "...", type: "video/playlist" }
             if (!isPlayingUserContent && player) playDefaultBGM();
         });
 
@@ -105,33 +103,30 @@
             queueVideo(data.videoId);
         });
 
-        // 通常検索結果の表示
         socket.on('search-results', (items) => {
             addSystemMessage("🔍 検索結果 (タップで予約):");
             renderSearchResults(items, false);
         });
 
-        // ★デフォルト変更用の検索結果の表示
         socket.on('search-results-for-default', (items) => {
             addSystemMessage("🛠️ デフォルト設定を選択:");
-            renderSearchResults(items, true); // true = defaultMode
+            renderSearchResults(items, true);
         });
 
         socket.on('flow-comment', (text) => spawnComment(text));
 
-        // 検索結果のカードを作る関数（共通化）
         function renderSearchResults(items, isDefaultMode) {
             const chatArea = document.getElementById('chat-area');
             items.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'search-result-card';
-                
                 const btnLabel = isDefaultMode ? "デフォルトに設定" : "予約する";
                 const btnClass = isDefaultMode ? "card-btn default-mode" : "card-btn";
-                // クリック時の動作を切り替え
+                // タイトル内のシングルクォートをエスケープ
+                const safeTitle = item.snippet.title.replace(/'/g, "\\'");
                 const onClickAction = isDefaultMode 
-                    ? `selectDefault('${item.id.videoId}', '${item.snippet.title.replace(/'/g, "\\'")}')`
-                    : `selectVideo('${item.id.videoId}', '${item.snippet.title.replace(/'/g, "\\'")}')`;
+                    ? `selectDefault('${item.id.videoId}', '${safeTitle}')`
+                    : `selectVideo('${item.id.videoId}', '${safeTitle}')`;
 
                 card.innerHTML = `
                     <img src="${item.snippet.thumbnails.high.url}" class="card-img" onclick="${onClickAction}">
@@ -156,22 +151,19 @@
         function selectVideo(videoId, title) {
             socket.emit('select-video', { videoId, title });
         }
-
-        // ★ 新追加: デフォルト設定を選択した時
         function selectDefault(videoId, title) {
             socket.emit('select-default', { videoId, title });
             addSystemMessage(`🔄 設定中...`);
         }
-
         function queueVideo(videoId) {
             queue.push(videoId);
             if (!isPlayingUserContent) playNext();
         }
 
-        // ... (以下、前回と同じプレイヤー関連の関数) ...
         function onYouTubeIframeAPIReady() {
+            // 初期化時は仮でLofi Girlを入れるが、すぐにplayDefaultBGMが呼ばれるはず
             player = new YT.Player('player', {
-                height: '100%', width: '100%', videoId: currentDefaultId,
+                height: '100%', width: '100%', videoId: currentDefault.id,
                 playerVars: { 'playsinline': 1, 'rel': 0, 'controls': 1 },
                 events: { 'onStateChange': onPlayerStateChange }
             });
@@ -180,25 +172,53 @@
             document.getElementById('overlay').style.display = 'none';
             playDefaultBGM();
         });
+
         function onPlayerStateChange(event) {
             if (event.data === YT.PlayerState.ENDED) {
-                isPlayingUserContent ? playNext() : player.playVideo();
+                if (isPlayingUserContent) {
+                    // 予約曲が終わったら次へ
+                    playNext();
+                } else {
+                    // デフォルトBGMが終わった時
+                    if (currentDefault.type === 'video') {
+                        // 単曲ならループ再生
+                        player.playVideo();
+                    } 
+                    // プレイリストの場合はAPIが自動で次の曲に行くので何もしない
+                    // ※リストが最後まで終わった場合、setLoop(true)により最初に戻る
+                }
             }
         }
+
         function playNext() {
             if (queue.length > 0) {
                 isPlayingUserContent = true;
+                player.setLoop(false); // 予約曲はループしない
                 player.loadVideoById(queue.shift());
             } else {
                 playDefaultBGM();
             }
         }
+
+        // ★重要: デフォルトBGM再生ロジック
         function playDefaultBGM() {
             isPlayingUserContent = false;
-            player.loadVideoById(currentDefaultId);
+            
+            if (currentDefault.type === 'playlist') {
+                // プレイリストとしてロード
+                player.loadPlaylist({
+                    list: currentDefault.id,
+                    listType: 'playlist'
+                });
+                player.setLoop(true); // リスト全体をループ設定
+            } else {
+                // 単曲としてロード
+                player.loadVideoById(currentDefault.id);
+                player.setLoop(false); // 単曲ループはENDEDイベントで制御する
+            }
         }
 
-        // ... (以下、コメント流し機能など前回と同じ) ...
+        // 以下、ユーティリティ
         function spawnComment(rawText) {
             const layer = document.getElementById('comment-layer');
             const el = document.createElement('div');
