@@ -16,9 +16,9 @@ const io = new Server(server);
 
 // ★変更: デフォルト設定をオブジェクトで管理
 let currentDefault = { 
-    id: "jfKfPfyJRdk", 
+    id: "7Q3BGAPAGQY", 
     type: "video", // "video" か "playlist"
-    title: "Lofi Girl"
+    title: "休日のひとり勉強会"
 };
 
 function toHalfWidth(str) {
