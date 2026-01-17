@@ -5,33 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Otoba</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; background-color: #111; margin: 0; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
+        /* --- 全体設定 --- */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; background-color: #111; margin: 0; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
+        
         .app-container { width: 100%; height: 100%; max-width: 1400px; background-color: #f0f0f0; display: flex; flex-direction: row; overflow: hidden; }
         
+        /* --- 動画セクション --- */
         .video-section { flex: 2; background-color: #000; display: flex; flex-direction: column; position: relative; justify-content: center; }
         #player { width: 100%; height: 100%; }
+        
+        /* 弾幕オーバーレイ */
         #comment-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; z-index: 20; }
         .flowing-text { position: absolute; white-space: nowrap; color: white; font-weight: bold; text-shadow: 2px 2px 0 #000; font-size: 24px; will-change: transform; }
 
+        /* --- チャットセクション --- */
         .chat-section { flex: 1; min-width: 320px; display: flex; flex-direction: column; background-color: #7296F3; border-left: 1px solid #333; position: relative; }
+
         #favorites-area { background: #5b78c7; padding: 8px; overflow-x: auto; white-space: nowrap; flex-shrink: 0; }
         .fav-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 15px; font-size: 12px; margin-right: 5px; cursor: pointer; }
 
-        #chat-area { flex-grow: 1; padding: 15px; overflow-y: auto; background-color: #8fb6eb; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
-        .message { flex-shrink: 0; max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px; background-color: #fff; align-self: flex-start; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        /* スクロールエリア */
+        #chat-area { 
+            flex-grow: 1; 
+            padding: 15px; 
+            overflow-y: auto; 
+            background-color: #8fb6eb; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+            -webkit-overflow-scrolling: touch; 
+        }
+        
+        /* メッセージ */
+        .message { 
+            flex-shrink: 0; 
+            max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: 14px; background-color: #fff; align-self: flex-start; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.1); 
+        }
         .message.system { align-self: center; background-color: rgba(255,255,255,0.4); color: #fff; padding: 4px 10px; font-size: 11px; }
 
-        .search-result-card { flex-shrink: 0; background: white; border-radius: 8px; overflow: hidden; width: 90%; align-self: flex-end; margin-bottom: 5px; display: flex; height: 80px; }
+        /* 検索結果カード */
+        .search-result-card { 
+            flex-shrink: 0; 
+            background: white; border-radius: 8px; overflow: hidden; width: 90%; align-self: flex-end; margin-bottom: 5px; display: flex; height: 80px; 
+        }
         .card-img { width: 100px; height: 100%; object-fit: cover; cursor: pointer; }
         .card-body { padding: 8px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
         .card-title { font-size: 12px; font-weight: bold; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        
         .card-btn { background: #1DB446; color: white; border: none; border-radius: 4px; font-size: 11px; padding: 4px; cursor: pointer; }
+        /* デフォルト設定用ボタンの色 */
         .card-btn.default-mode { background: #E04F5F; }
 
         .input-area { background: #fff; padding: 10px; display: flex; gap: 8px; border-top: 1px solid #ddd; flex-shrink: 0; }
         input[type="text"] { flex-grow: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; font-size: 16px; }
         button.send-btn { padding: 0 20px; border-radius: 20px; background-color: #2d9bf0; color: white; border: none; font-weight: bold; cursor: pointer; white-space: nowrap;}
+
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 100; flex-direction: column; color: white; }
+
         @media (max-width: 768px) {
             .app-container { flex-direction: column; }
             .video-section { height: 35vh; flex: none; }
@@ -51,6 +81,7 @@
             <div id="player"></div>
             <div id="comment-layer"></div>
         </div>
+        
         <div class="chat-section">
             <div id="favorites-area"></div>
             <div id="chat-area"></div>
@@ -65,6 +96,7 @@
     <script src="https://www.youtube.com/iframe_api"></script>
 
     <script>
+        // ★お気に入りリスト (ビデオとプレイリストの混合例)
         const favorites = [
             { id: "AOfaWrBwo7I", label: "ひゅるりらぱっぱ", type: "video" },
             { id: "P_CSdxSGfaA", label: "アンノウンマザーグース", type: "video" },
@@ -78,35 +110,62 @@
         let queue = [];
         let isPlayingUserContent = false;
         
-        // ★初期値はオブジェクト
+        // ★重要: デフォルトBGMの「今の再生位置」を記憶する変数
+        let savedPlaylistIndex = 0;
+
+        // 初期デフォルト値
         let currentDefault = { id: "7Q3BGAPAGQY", type: "video" };
 
-        socket.on('init-state', (data) => { 
-            // サーバーから初期設定を受け取る
-            if(data.defaultData) currentDefault = data.defaultData; 
+        // --- Socketイベント受信 ---
+
+        socket.on('init-state', (data) => {
+            if(data.defaultData) currentDefault = data.defaultData;
         });
 
         socket.on('update-default', (data) => {
             console.log("Update Default:", data);
-            currentDefault = data;
             
-            // ユーザーのリクエスト再生中じゃなければ、即座に切り替える
+            // IDが変わったら再生位置はリセット
+            if (currentDefault.id !== data.id) {
+                savedPlaylistIndex = 0;
+            }
+
+            currentDefault = data;
+
+            // リクエスト曲の再生中でなければ、即座に切り替え
             if (!isPlayingUserContent && player) {
-                // 一旦停止してから再生関数を呼ぶと確実です
-                player.stopVideo();
+                player.stopVideo(); // バグ防止のための停止
                 setTimeout(() => {
                     playDefaultBGM();
-                }, 100); // ほんの少し待つのがコツ
+                }, 100);
             }
         });
 
         socket.on('chat-message', (msg) => {
             addMessageToScreen(msg);
             const videoId = extractYouTubeId(msg);
-            if (msg.toLowerCase() === "skip" || msg === "スキップ") {
-                if (isPlayingUserContent) playNext();
+            const lowerMsg = msg.toLowerCase();
+
+            // ★スキップ機能: 何がなんでも次のリクエストへ
+            if (lowerMsg === "skip" || msg === "スキップ") {
+                playNext();
                 return;
             }
+
+            // ★ネクスト機能: 状況によって分岐
+            if (lowerMsg === "next" || msg === "ネクスト") {
+                if (isPlayingUserContent) {
+                    // リクエスト再生中ならスキップと同じ
+                    playNext();
+                } else {
+                    // デフォルト再生中なら、プレイリストの次の曲へ
+                    if (player && typeof player.nextVideo === 'function') {
+                        player.nextVideo();
+                    }
+                }
+                return;
+            }
+
             if (videoId) queueVideo(videoId);
         });
 
@@ -127,14 +186,17 @@
 
         socket.on('flow-comment', (text) => spawnComment(text));
 
+        // --- 画面操作系 ---
+
         function renderSearchResults(items, isDefaultMode) {
             const chatArea = document.getElementById('chat-area');
             items.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'search-result-card';
+                
                 const btnLabel = isDefaultMode ? "デフォルトに設定" : "予約する";
                 const btnClass = isDefaultMode ? "card-btn default-mode" : "card-btn";
-                // タイトル内のシングルクォートをエスケープ
+                // タイトル内の記号対策
                 const safeTitle = item.snippet.title.replace(/'/g, "\\'");
                 const onClickAction = isDefaultMode 
                     ? `selectDefault('${item.id.videoId}', '${safeTitle}')`
@@ -160,82 +222,97 @@
             input.value = '';
         }
 
+        // お気に入り・検索結果からの選択
         function selectVideo(videoId, title, type = 'video') {
-        socket.emit('select-video', { videoId, title, type });
+            // type情報も一緒にサーバーへ送る
+            socket.emit('select-video', { videoId, title, type });
         }
+
         function selectDefault(videoId, title) {
             socket.emit('select-default', { videoId, title });
             addSystemMessage(`🔄 設定中...`);
         }
+
         function queueVideo(videoId) {
             queue.push(videoId);
             if (!isPlayingUserContent) playNext();
         }
 
+        // --- プレイヤー制御 ---
+
         function onYouTubeIframeAPIReady() {
-            // 初期化時は仮でLofi Girlを入れるが、すぐにplayDefaultBGMが呼ばれるはず
             player = new YT.Player('player', {
                 height: '100%', width: '100%', videoId: currentDefault.id,
                 playerVars: { 'playsinline': 1, 'rel': 0, 'controls': 1 },
                 events: { 'onStateChange': onPlayerStateChange }
             });
         }
+        
         document.getElementById('start-btn').addEventListener('click', () => {
             document.getElementById('overlay').style.display = 'none';
             playDefaultBGM();
         });
 
         function onPlayerStateChange(event) {
+            // ★デフォルト再生中、常に位置を記録する (リクエストで中断された時に戻るため)
+            if (!isPlayingUserContent && currentDefault.type === 'playlist' && player.getPlaylistIndex) {
+                const idx = player.getPlaylistIndex();
+                if (idx !== -1) savedPlaylistIndex = idx;
+            }
+
             if (event.data === YT.PlayerState.ENDED) {
                 if (isPlayingUserContent) {
-                    // 予約曲が終わったら次へ
                     playNext();
                 } else {
-                    // デフォルトBGMが終わった時
                     if (currentDefault.type === 'video') {
-                        // 単曲ならループ再生
-                        player.playVideo();
+                        player.playVideo(); // 単曲ループ
                     } 
-                    // プレイリストの場合はAPIが自動で次の曲に行くので何もしない
-                    // ※リストが最後まで終わった場合、setLoop(true)により最初に戻る
+                    // プレイリストはAPI側で自動進行
                 }
             }
         }
 
         function playNext() {
+            // ★リクエスト曲に移る直前、もし今プレイリスト再生中なら場所をメモする
+            if (!isPlayingUserContent && player && currentDefault.type === 'playlist') {
+                if(player.getPlaylistIndex) {
+                    savedPlaylistIndex = player.getPlaylistIndex();
+                    console.log("位置を保存しました:", savedPlaylistIndex);
+                }
+            }
+
             if (queue.length > 0) {
                 isPlayingUserContent = true;
-                player.setLoop(false); // 予約曲はループしない
+                player.setLoop(false);
                 player.loadVideoById(queue.shift());
             } else {
                 playDefaultBGM();
             }
         }
 
-        // ★重要: デフォルトBGM再生ロジック
         function playDefaultBGM() {
             isPlayingUserContent = false;
             
             if (currentDefault.type === 'playlist') {
-                // プレイリストとしてロード
+                console.log("プレイリスト復帰 位置:", savedPlaylistIndex);
                 player.loadPlaylist({
                     list: currentDefault.id,
                     listType: 'playlist',
-                    index: 0, // ★最初から再生する指定を追加
+                    index: savedPlaylistIndex, // ★保存した位置から再開
                     startSeconds: 0
                 });
-                player.setLoop(true); // リスト全体をループ
+                player.setLoop(true);
             } else {
-                // 単曲としてロード
                 player.loadVideoById({
                     videoId: currentDefault.id,
                     startSeconds: 0
                 });
-                player.setLoop(false); // 単曲ループはENDEDイベントで制御
+                player.setLoop(false);
             }
         }
 
-        // 以下、ユーティリティ
+        // --- その他ヘルパー関数 ---
+
         function spawnComment(rawText) {
             const layer = document.getElementById('comment-layer');
             const el = document.createElement('div');
@@ -284,14 +361,17 @@
             const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
             return (match && match[2].length === 11) ? match[2] : null;
         }
+        
+        // お気に入りボタン生成
         const favArea = document.getElementById('favorites-area');
         favorites.forEach(fav => {
             const btn = document.createElement('button');
             btn.className = 'fav-btn'; btn.innerText = fav.label;
-            // ★修正: type も一緒に渡す
+            // type引数を追加
             btn.onclick = () => selectVideo(fav.id, fav.label, fav.type);
             favArea.appendChild(btn);
         });
+
         document.getElementById('message-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendChat();
         });
