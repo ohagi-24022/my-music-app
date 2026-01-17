@@ -276,7 +276,9 @@ function createCarousel(items, buttonLabel, mode) {
 function isUrl(text) { return text.includes('youtube.com') || text.includes('youtu.be'); }
 function isCommand(text) { 
     const t = text.toLowerCase();
-    return t === 'スキップ' || t === 'skip' || t === 'ネクスト' || t === 'next';
+    return t === 'スキップ' || t === 'skip' || 
+           t === 'ネクスト' || t === 'next' || 
+           t === 'バック' || t === 'back';
 }
 async function searchYouTube(query) {
     if (!YOUTUBE_API_KEY) throw new Error("No API Key");
