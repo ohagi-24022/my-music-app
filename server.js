@@ -274,7 +274,10 @@ function createCarousel(items, buttonLabel, mode) {
     }));
 }
 function isUrl(text) { return text.includes('youtube.com') || text.includes('youtu.be'); }
-function isCommand(text) { return text === 'スキップ' || text.toLowerCase() === 'skip'; }
+function isCommand(text) { 
+    const t = text.toLowerCase();
+    return t === 'スキップ' || t === 'skip' || t === 'ネクスト' || t === 'next';
+}
 async function searchYouTube(query) {
     if (!YOUTUBE_API_KEY) throw new Error("No API Key");
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&type=video&maxResults=3`;
